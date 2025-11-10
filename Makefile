@@ -6,7 +6,7 @@ endif
 
 SRC = .
 TESTS = tests
-COLLECTIONS = -collection:src=$(SRC) -collection:lib=lib
+COLLECTIONS = -collection:src=$(SRC)
 
 CC = odin
 BUILD_DIR = build
