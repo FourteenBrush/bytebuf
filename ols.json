@@ -7,10 +7,10 @@
     "enable_fake_methods": true,
     "checker_args": "-debug -strict-style -vet-unused -vet-semicolon -vet-cast -vet-using-param",
     "profiles": [
-        { "name": "default", "checker_path": ["src", "tests"] }
+        { "name": "default", "checker_path": [".", "src", "tests"] }
     ],
     "collections": [
-      { "name": "src", "path": "src/" },
+      { "name": "src", "path": "./" },
       { "name": "lib", "path": "lib/" }
     ]
 }
