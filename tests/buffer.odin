@@ -1,10 +1,16 @@
+#+feature using-stmt
 package tests
 
 import "core:mem"
 import "core:slice"
+import "core:c/libc"
 import "core:testing"
 
 import bytebuf ".."
+
+// TODO: generic testing harness that tests transactional reads and readability
+// - ensure short reads are indeed transactional
+// - ensure invalid data produces .InvalidData error
 
 @(test)
 creation :: proc(t: ^testing.T) {
@@ -19,6 +25,48 @@ creation :: proc(t: ^testing.T) {
 }
 
 @(test)
+create_dynamic_zero_cap_works :: proc(t: ^testing.T) {
+    using bytebuf, testing
+    
+    d, err := create_dynamic(0, context.temp_allocator)
+    expect_value(t, err, mem.Allocator_Error.None)
+    expect(t, type_of(d.data) == [dynamic]u8)
+    
+    d, err = create_dynamic_from_copy([]u8{}, 0, context.temp_allocator)
+    expect_value(t, err, mem.Allocator_Error.None)
+    expect(t, type_of(d.data) == [dynamic]u8)
+}
+
+@(test)
+dynamic_cap_violation :: proc(t: ^testing.T) {
+    using bytebuf, testing
+    testing.expect_signal(t, libc.SIGILL)
+    _, _ = create_dynamic(-1, context.temp_allocator)
+}
+
+@(test)
+dynamic_from_copy_cap_violation :: proc(t: ^testing.T) {
+    using bytebuf, testing
+    testing.expect_signal(t, libc.SIGILL)
+    _, _ = create_dynamic_from_copy([]u8{}, -1, context.temp_allocator)
+}
+
+@(test)
+dynamic_from_contents_cap_violation :: proc(t: ^testing.T) {
+    using bytebuf, testing
+    testing.expect_signal(t, libc.SIGILL)
+    _, _ = create_dynamic_from_copy([]u8{16, 32, 12}, cap=2, allocator=context.temp_allocator)
+}
+
+@(test)
+creation_from_copy :: proc(t: ^testing.T) {
+    using bytebuf, testing
+    contents := []u8{8, 16, 7, 48}
+    d, err := create_dynamic_from_copy(contents, 64, context.temp_allocator)
+    expect_value(t, err, mem.Allocator_Error.None)
+}
+
+@(test)
 num_readable_with_offsets :: proc(t: ^testing.T) {
     using bytebuf, testing
 
@@ -27,7 +75,7 @@ num_readable_with_offsets :: proc(t: ^testing.T) {
     s.data = {1, 1, 1}
     expect_value(t, readable(s), 3)
     s.read_off = 1
-expect_value(t, readable(s), 2)
+    expect_value(t, readable(s), 2)
     s.read_off = 2
     expect_value(t, readable(s), 1)
     s.read_off = 3
@@ -49,94 +97,111 @@ expect_value(t, readable(s), 2)
 @(test)
 ensure_readability :: proc(t: ^testing.T) {
     using bytebuf
-    _test_readability(t, &SBuffer {})
-    _test_readability(t, &DBuffer {})
-}
+    test(t, &SBuffer {})
+    test(t, &DBuffer {})
 
-@(private="file")
-_test_readability :: proc(t: ^testing.T, buf: ^bytebuf.Buffer($K)) {
-    using bytebuf, testing
+    test :: proc(t: ^testing.T, buf: ^bytebuf.Buffer($K)) {
+        using bytebuf, testing
 
-    expect_value(t, ensure_readable(buf^, 0), ReadError.None)
-    expect_value(t, ensure_readable(buf^, 1), ReadError.ShortRead)
-    expect_value(t, ensure_readable(buf^, 8), ReadError.ShortRead)
+        expect_value(t, ensure_readable(buf^, 0), ReadError.None)
+        expect_value(t, ensure_readable(buf^, 1), ReadError.ShortRead)
+        expect_value(t, ensure_readable(buf^, 8), ReadError.ShortRead)
 
-    data := []u8 {1, 1, 1}
-    buf.data = data when K == .Static else slice.to_dynamic(data, context.temp_allocator)
+        data := []u8 {1, 1, 1}
+        buf.data = data when K == .Static else slice.to_dynamic(data, context.temp_allocator)
 
-    for n in 0..=3 {
-        expect_value(t, ensure_readable(buf^, n), ReadError.None)
+        for n in 0..=len(data) {
+            expect_value(t, ensure_readable(buf^, n), ReadError.None)
+        }
+        expect_value(t, ensure_readable(buf^, 4), ReadError.ShortRead)
+
+        buf.read_off = 2
+        expect_value(t, ensure_readable(buf^, 0), ReadError.None)
+        expect_value(t, ensure_readable(buf^, 1), ReadError.None)
+        expect_value(t, ensure_readable(buf^, 2), ReadError.ShortRead)
+
+        buf.read_off = 3
+        expect_value(t, ensure_readable(buf^, 0), ReadError.None)
+        expect_value(t, ensure_readable(buf^, 1), ReadError.ShortRead)
     }
-    expect_value(t, ensure_readable(buf^, 4), ReadError.ShortRead)
-
-    buf.read_off = 2
-    expect_value(t, ensure_readable(buf^, 0), ReadError.None)
-    expect_value(t, ensure_readable(buf^, 1), ReadError.None)
-    expect_value(t, ensure_readable(buf^, 2), ReadError.ShortRead)
-
-    buf.read_off = 3
-    expect_value(t, ensure_readable(buf^, 0), ReadError.None)
-    expect_value(t, ensure_readable(buf^, 1), ReadError.ShortRead)
 }
 
 @(test)
 read_u8 :: proc(t: ^testing.T) {
     using bytebuf
-    _read_u8(t, &SBuffer{})
-    _read_u8(t, &DBuffer{})
-}
+    test(t, &SBuffer{})
+    test(t, &DBuffer{})
 
-@(private="file")
-_read_u8 :: proc(t: ^testing.T, buf: ^bytebuf.Buffer($K)) {
-    using bytebuf, testing
+    test :: proc(t: ^testing.T, buf: ^bytebuf.Buffer($K)) {
+        using bytebuf, testing
 
-    data := []u8 {4, 8, 9}
-    buf.data = data when K == .Static else slice.to_dynamic(data, context.temp_allocator)
-    expect_value(t, readable(buf^), 3)
-    expect_value(t, ensure_readable(buf^, 3), ReadError.None)
+        data := []u8 {4, 8, 9}
+        buf.data = data when K == .Static else slice.to_dynamic(data, context.temp_allocator)
+        expect_value(t, readable(buf^), 3)
+        expect_value(t, ensure_readable(buf^, 3), ReadError.None)
 
-    for byte, i in data {
-        b, err := read_u8(buf)
-        expect_value(t, b, byte)
-        expect_value(t, err, ReadError.None)
+        for byte, i in data {
+            b, err := read_u8(buf)
+            expect_value(t, b, byte)
+            expect_value(t, err, ReadError.None)
 
-        expect_value(t, readable(buf^), len(data) - i - 1)
-        expect_value(t, ensure_readable(buf^, len(data) - i), ReadError.ShortRead)
+            expect_value(t, readable(buf^), len(data) - i - 1)
+            expect_value(t, ensure_readable(buf^, len(data) - i), ReadError.ShortRead)
+        }
+
+        expect_value(t, readable(buf^), 0)
+        // ensure successive reads fail
+        expect_value(t, compress_values(read_u8(buf)), compress_values(u8(0), ReadError.ShortRead))
+        expect_value(t, ensure_readable(buf^, 1), ReadError.ShortRead)
     }
-
-    expect_value(t, readable(buf^), 0)
-    // ensure successive reads fail
-    expect_value(t, compress_values(read_u8(buf)), compress_values(u8(0), ReadError.ShortRead))
-    expect_value(t, ensure_readable(buf^, 1), ReadError.ShortRead)
 }
 
 @(test)
 unchecked_read_u8 :: proc(t: ^testing.T) {
     using bytebuf
-    _unchecked_read_u8(t, &SBuffer{})
-    _unchecked_read_u8(t, &DBuffer{})
+    test(t, &SBuffer{})
+    test(t, &DBuffer{})
+
+	test :: proc(t: ^testing.T, buf: ^bytebuf.Buffer($K)) {
+		using bytebuf, testing
+		
+		data := []u8{7, 12, 34, 8}
+		buf.data = data when K == .Static else slice.to_dynamic(data, context.temp_allocator)
+
+		expect_value(t, readable(buf^), len(data))
+		expect_value(t, ensure_readable(buf^, len(data)), ReadError.None)
+
+		for byte, i in data {
+			b := unchecked_read_u8(buf)
+			expect_value(t, b, byte)
+
+			expect_value(t, readable(buf^), len(data) - i - 1)
+			expect_value(t, ensure_readable(buf^, len(data) - i), ReadError.ShortRead)
+		}
+
+		expect_value(t, readable(buf^), 0)
+		// ensure successive reads fail, we cant really assume another unchecked read to segfault
+		// as it's theoretically undefined behaviour what happens
+		expect_value(t, ensure_readable(buf^, 1), ReadError.ShortRead)
+	}
 }
 
-@(private="file")
-_unchecked_read_u8 :: proc(t: ^testing.T, buf: ^bytebuf.Buffer($K)) {
-    using bytebuf, testing
-    
-    data := []u8{7, 12, 34, 8}
-    buf.data = data when K == .Static else slice.to_dynamic(data, context.temp_allocator)
+@(test)
+read_bool_exact :: proc(t: ^testing.T) {
+    using bytebuf
+    test(t, &SBuffer{})
+    test(t, &DBuffer{})
 
-    expect_value(t, readable(buf^), len(data))
-    expect_value(t, ensure_readable(buf^, len(data)), ReadError.None)
+    test :: proc(t: ^testing.T, buf: ^bytebuf.Buffer($K)) {
+        using bytebuf, testing
 
-    for byte, i in data {
-        b := unchecked_read_u8(buf)
-        expect_value(t, b, byte)
+        data := []u8{0, 12, 1}
+        buf.data = data when K == .Static else slice.to_dynamic(data, context.temp_allocator)
 
-        expect_value(t, readable(buf^), len(data) - i - 1)
-        expect_value(t, ensure_readable(buf^, len(data) - i), ReadError.ShortRead)
+        expect_value(t, readable(buf^), len(data))
+        expect_value(t, ensure_readable(buf^, len(data)), ReadError.None)
+
+        b0, err := read_bool_exact(buf)
+        // expect_value()
     }
-
-    expect_value(t, readable(buf^), 0)
-    // ensure successive reads would fail, we cant really assume another unchecked read to segfault
-    // as it's theoretically undefined behaviour what happens
-    expect_value(t, ensure_readable(buf^, 1), ReadError.ShortRead)
 }
