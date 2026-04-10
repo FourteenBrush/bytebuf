@@ -2,20 +2,19 @@ package bytebuf
 
 import "core:mem"
 
-BufferKind :: enum { Static, Dynamic }
+BufferKind :: enum { Static, Growable }
 
 Buffer :: struct($Kind: BufferKind) {
     data: ([]u8 when Kind == .Static else [dynamic]u8),
     read_off: int,
 }
 
-// Non resizable buffer type.
+// Non growable buffer type.
 StaticBuffer :: Buffer(.Static)
 SBuffer :: Buffer(.Static)
 
-// Resizable buffer type.
-DynamicBuffer :: Buffer(.Dynamic)
-DBuffer :: Buffer(.Dynamic)
+GrowableBuffer :: Buffer(.Growable)
+GBuffer :: Buffer(.Growable)
 
 ReadError :: enum {
     None      = 0,
@@ -28,31 +27,31 @@ ReadError :: enum {
 
 create :: proc {
     create_static,
-    create_dynamic,
-    create_dynamic_from_copy,
+    create_growable,
+    create_growable_from_copy,
 }
 
-// Creates a static buffer which does not have the ability to resize itself.
+// Creates a static buffer which does not have the ability to grow beyond its capacity.
 create_static :: proc "contextless" (data: []u8) -> SBuffer {
     return SBuffer { data = data }
 }
 
-// Creates a resizable buffer, using the provided capacity and allocator.
+// Creates a growable buffer, using the provided capacity and allocator.
 // `cap` must be >= 0.
-create_dynamic :: proc(#any_int cap: int, allocator := context.allocator) -> (d: DBuffer, err: mem.Allocator_Error) #optional_allocator_error {
+create_growable :: proc(#any_int cap: int, allocator := context.allocator) -> (d: GBuffer, err: mem.Allocator_Error) #optional_allocator_error {
     d.data = make([dynamic]u8, 0, cap, allocator) or_return
     return
 }
 
-// Creates a resizable buffer using the provided allocator, additionally, copies `contents` into it.
+// Creates a growable buffer using the provided allocator, additionally, copies `contents` into it.
 // `cap` must not be smaller than `len(contents)`.
-create_dynamic_from_copy :: proc(contents: []u8, #any_int cap: int, allocator := context.allocator) -> (d: DBuffer, err: mem.Allocator_Error) #optional_allocator_error {
+create_growable_from_copy :: proc(contents: []u8, #any_int cap: int, allocator := context.allocator) -> (d: GBuffer, err: mem.Allocator_Error) #optional_allocator_error {
     d.data = make([dynamic]u8, len(contents), cap, allocator) or_return
     copy(d.data[:], contents)
     return
 }
 
-destroy_dynamic :: proc(buf: DBuffer) {
+destroy_growable :: proc(buf: GBuffer) {
     delete_dynamic_array(buf.data)
 }
 

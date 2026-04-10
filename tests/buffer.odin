@@ -19,50 +19,51 @@ creation :: proc(t: ^testing.T) {
     s: StaticBuffer = create([]u8{9, 3, 4})
     expect(t, type_of(s.data) == []u8)
 
-    d, err := create(512, context.temp_allocator)
+    g, err := create(512, context.allocator)
+    defer destroy_growable(g)
     expect_value(t, err, mem.Allocator_Error.None)
-    expect(t, type_of(d.data) == [dynamic]u8)
+    expect(t, type_of(g.data) == [dynamic]u8)
 }
 
 @(test)
 create_dynamic_zero_cap_works :: proc(t: ^testing.T) {
     using bytebuf, testing
     
-    d, err := create_dynamic(0, context.temp_allocator)
+    g, err := create_growable(0, context.temp_allocator)
     expect_value(t, err, mem.Allocator_Error.None)
-    expect(t, type_of(d.data) == [dynamic]u8)
+    expect(t, type_of(g.data) == [dynamic]u8)
     
-    d, err = create_dynamic_from_copy([]u8{}, 0, context.temp_allocator)
+    g, err = create_growable_from_copy([]u8{}, 0, context.temp_allocator)
     expect_value(t, err, mem.Allocator_Error.None)
-    expect(t, type_of(d.data) == [dynamic]u8)
+    expect(t, type_of(g.data) == [dynamic]u8)
 }
 
 @(test)
 dynamic_cap_violation :: proc(t: ^testing.T) {
     using bytebuf, testing
     testing.expect_signal(t, libc.SIGILL)
-    _, _ = create_dynamic(-1, context.temp_allocator)
+    _, _ = create_growable(-1, context.temp_allocator)
 }
 
 @(test)
 dynamic_from_copy_cap_violation :: proc(t: ^testing.T) {
     using bytebuf, testing
     testing.expect_signal(t, libc.SIGILL)
-    _, _ = create_dynamic_from_copy([]u8{}, -1, context.temp_allocator)
+    _, _ = create_growable_from_copy([]u8{}, -1, context.temp_allocator)
 }
 
 @(test)
 dynamic_from_contents_cap_violation :: proc(t: ^testing.T) {
     using bytebuf, testing
     testing.expect_signal(t, libc.SIGILL)
-    _, _ = create_dynamic_from_copy([]u8{16, 32, 12}, cap=2, allocator=context.temp_allocator)
+    _, _ = create_growable_from_copy([]u8{16, 32, 12}, cap=2, allocator=context.temp_allocator)
 }
 
 @(test)
 creation_from_copy :: proc(t: ^testing.T) {
     using bytebuf, testing
     contents := []u8{8, 16, 7, 48}
-    d, err := create_dynamic_from_copy(contents, 64, context.temp_allocator)
+    g, err := create_growable_from_copy(contents, 64, context.temp_allocator)
     expect_value(t, err, mem.Allocator_Error.None)
 }
 
@@ -82,23 +83,23 @@ num_readable_with_offsets :: proc(t: ^testing.T) {
     expect_value(t, readable(s), 0)
     // there is no way read_off can become bigger than len(data), unless set manually
 
-    d: DBuffer
+    g: GBuffer
     expect_value(t, readable(s), 0)
-    d.data = slice.to_dynamic([]u8{1, 1, 1}, context.temp_allocator)
-    expect_value(t, readable(d), 3)
-    d.read_off = 1
-    expect_value(t, readable(d), 2)
-    d.read_off = 2
-    expect_value(t, readable(d), 1)
-    d.read_off = 3
-    expect_value(t, readable(d), 0)
+    g.data = slice.to_dynamic([]u8{1, 1, 1}, context.temp_allocator)
+    expect_value(t, readable(g), 3)
+    g.read_off = 1
+    expect_value(t, readable(g), 2)
+    g.read_off = 2
+    expect_value(t, readable(g), 1)
+    g.read_off = 3
+    expect_value(t, readable(g), 0)
 }
 
 @(test)
 ensure_readability :: proc(t: ^testing.T) {
     using bytebuf
     test(t, &SBuffer {})
-    test(t, &DBuffer {})
+    test(t, &GBuffer {})
 
     test :: proc(t: ^testing.T, buf: ^bytebuf.Buffer($K)) {
         using bytebuf, testing
@@ -130,7 +131,7 @@ ensure_readability :: proc(t: ^testing.T) {
 read_u8 :: proc(t: ^testing.T) {
     using bytebuf
     test(t, &SBuffer{})
-    test(t, &DBuffer{})
+    test(t, &GBuffer{})
 
     test :: proc(t: ^testing.T, buf: ^bytebuf.Buffer($K)) {
         using bytebuf, testing
@@ -160,7 +161,7 @@ read_u8 :: proc(t: ^testing.T) {
 unchecked_read_u8 :: proc(t: ^testing.T) {
     using bytebuf
     test(t, &SBuffer{})
-    test(t, &DBuffer{})
+    test(t, &GBuffer{})
 
 	test :: proc(t: ^testing.T, buf: ^bytebuf.Buffer($K)) {
 		using bytebuf, testing
@@ -190,7 +191,7 @@ unchecked_read_u8 :: proc(t: ^testing.T) {
 read_bool_exact :: proc(t: ^testing.T) {
     using bytebuf
     test(t, &SBuffer{})
-    test(t, &DBuffer{})
+    test(t, &GBuffer{})
 
     test :: proc(t: ^testing.T, buf: ^bytebuf.Buffer($K)) {
         using bytebuf, testing
