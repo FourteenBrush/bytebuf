@@ -11,7 +11,7 @@ import "core:testing"
 import bytebuf ".."
 
 // no windows case needed, handling code maps SEH exception to SIGILL
-TRAP_SIG :: posix.SIGTRAP when ODIN_OS == .Darwin else win32.EXCEPTION_BREAKPOINT when ODIN_OS == .Windows else libc.SIGILL
+TRAP_SIG :: posix.SIGTRAP when ODIN_OS == .Darwin else win32.EXCEPTION_ILLEGAL_INSTRUCTION when ODIN_OS == .Windows else libc.SIGILL
 
 // TODO: generic testing harness that tests transactional reads and readability
 // - ensure short reads are indeed transactional
