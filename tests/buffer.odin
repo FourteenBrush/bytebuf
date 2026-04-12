@@ -8,8 +8,8 @@ import "core:testing"
 
 import bytebuf ".."
 
-// no windows case needed, handling code understands SIGILL
-TRAP_SIG :: libc.SIGILL when ODIN_OS == .Linux else libc.SIGABRT
+// no windows case needed, handling code maps SEH exception to SIGILL
+TRAP_SIG :: libc.SIGABRT when ODIN_OS == .Darwin else libc.SIGILL
 
 // TODO: generic testing harness that tests transactional reads and readability
 // - ensure short reads are indeed transactional
@@ -44,21 +44,21 @@ create_dynamic_zero_cap_works :: proc(t: ^testing.T) {
 @(test)
 dynamic_cap_violation :: proc(t: ^testing.T) {
     using bytebuf, testing
-    testing.expect_signal(t, libc.TRAP)
+    testing.expect_signal(t, TRAP_SIG)
     _, _ = create_growable(-1, context.temp_allocator)
 }
 
 @(test)
 dynamic_from_copy_cap_violation :: proc(t: ^testing.T) {
     using bytebuf, testing
-    testing.expect_signal(t, libc.TRAP)
+    testing.expect_signal(t, TRAP_SIG)
     _, _ = create_growable_from_copy([]u8{}, -1, context.temp_allocator)
 }
 
 @(test)
 dynamic_from_contents_cap_violation :: proc(t: ^testing.T) {
     using bytebuf, testing
-    testing.expect_signal(t, libc.TRAP)
+    testing.expect_signal(t, TRAP_SIG)
     _, _ = create_growable_from_copy([]u8{16, 32, 12}, cap=2, allocator=context.temp_allocator)
 }
 
