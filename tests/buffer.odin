@@ -5,11 +5,13 @@ import "core:mem"
 import "core:slice"
 import "core:c/libc"
 import "core:testing"
+@(require) import "core:sys/posix"
+@(require) import win32 "core:sys/windows"
 
 import bytebuf ".."
 
 // no windows case needed, handling code maps SEH exception to SIGILL
-TRAP_SIG :: 5 /*SIGTRAP*/ when ODIN_OS == .Darwin else libc.SIGILL
+TRAP_SIG :: posix.SIGTRAP when ODIN_OS == .Darwin else win32.EXCEPTION_BREAKPOINT when ODIN_OS == .Windows else libc.SIGILL
 
 // TODO: generic testing harness that tests transactional reads and readability
 // - ensure short reads are indeed transactional
