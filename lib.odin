@@ -1,5 +1,6 @@
 package bytebuf
 
+import "core:fmt"
 import "core:mem"
 
 BufferKind :: enum { Static, Growable }
@@ -11,10 +12,10 @@ Buffer :: struct($Kind: BufferKind) {
 
 // Non growable buffer type.
 StaticBuffer :: Buffer(.Static)
-SBuffer :: Buffer(.Static)
+SBuffer :: StaticBuffer
 
 GrowableBuffer :: Buffer(.Growable)
-GBuffer :: Buffer(.Growable)
+GBuffer :: GrowableBuffer
 
 ReadError :: enum {
     None      = 0,
@@ -38,16 +39,16 @@ create_static :: proc "contextless" (data: []u8) -> SBuffer {
 
 // Creates a growable buffer, using the provided capacity and allocator.
 // `cap` must be >= 0.
-create_growable :: proc(#any_int cap: int, allocator := context.allocator) -> (d: GBuffer, err: mem.Allocator_Error) #optional_allocator_error {
-    d.data = make([dynamic]u8, 0, cap, allocator) or_return
+create_growable :: proc(#any_int cap: int, allocator := context.allocator) -> (g: GBuffer, err: mem.Allocator_Error) #optional_allocator_error {
+    g.data = make([dynamic]u8, 0, cap, allocator) or_return
     return
 }
 
 // Creates a growable buffer using the provided allocator, additionally, copies `contents` into it.
 // `cap` must not be smaller than `len(contents)`.
-create_growable_from_copy :: proc(contents: []u8, #any_int cap: int, allocator := context.allocator) -> (d: GBuffer, err: mem.Allocator_Error) #optional_allocator_error {
-    d.data = make([dynamic]u8, len(contents), cap, allocator) or_return
-    copy(d.data[:], contents)
+create_growable_from_copy :: proc(contents: []u8, #any_int cap: int, allocator := context.allocator) -> (g: GBuffer, err: mem.Allocator_Error) #optional_allocator_error {
+    g.data = make([dynamic]u8, len(contents), cap, allocator) or_return
+    copy(g.data[:], contents)
     return
 }
 
@@ -71,7 +72,7 @@ ensure_readable :: proc "contextless" (buf: Buffer($K), #any_int n: int) -> Read
 }
 
 // ------------------------------
-// Reading primitives
+// Primitive read operations
 // ------------------------------
 
 // Reads a boolean, only accepting either `0` or `1`, any other value is treated
@@ -85,6 +86,9 @@ read_bool_exact :: proc "contextless" (buf: ^Buffer($K)) -> (bool, ReadError) #n
     return bool(b), .None
 }
 
+// Reads a boolean, only accepting either `0` or `1`, any other value is treated
+// as invalid and `ReadError.InvalidData` is returned.
+// No bounds checking is performed.
 @(require_results)
 unchecked_read_bool_exact :: proc "contextless" (buf: ^Buffer($K)) -> (bool, ReadError) #no_bounds_check {
     b := buf.data[buf.read_off]
