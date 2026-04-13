@@ -9,11 +9,7 @@ import "core:testing"
 
 import bytebuf ".."
 
-TRAP_SIG :: posix.SIGTRAP when ODIN_OS == .Darwin else libc.SIGSEGV when ODIN_OS == .Windows else libc.SIGILL
-
-// TODO: generic testing harness that tests transactional reads and readability
-// - ensure short reads are indeed transactional
-// - ensure invalid data produces .InvalidData error
+TRAP_SIG :: posix.SIGTRAP when ODIN_OS == .Darwin else libc.SIGILL
 
 @(test)
 creation :: proc(t: ^testing.T) {
@@ -193,19 +189,32 @@ unchecked_read_u8 :: proc(t: ^testing.T) {
 @(test)
 read_bool_exact :: proc(t: ^testing.T) {
     using bytebuf
-    test(t, &SBuffer{})
-    test(t, &GBuffer{})
+    test(t, &bytebuf.SBuffer{}, bytebuf.read_bool_exact)
+    test(t, &bytebuf.GBuffer{}, bytebuf.read_bool_exact)
 
-    test :: proc(t: ^testing.T, buf: ^bytebuf.Buffer($K)) {
+    test :: proc(t: ^testing.T, buf: ^bytebuf.Buffer($K), read_proc: proc "contextless" (^bytebuf.Buffer(K)) -> (bool, bytebuf.ReadError)) {
         using bytebuf, testing
 
-        data := []u8{0, 12, 1}
+        assert(read_proc != nil)
+        data := []u8{0, 1, 12}
         buf.data = data when K == .Static else slice.to_dynamic(data, context.temp_allocator)
 
         expect_value(t, readable(buf^), len(data))
         expect_value(t, ensure_readable(buf^, len(data)), ReadError.None)
 
-        b0, err := read_bool_exact(buf)
-        // expect_value()
+        b, err := read_proc(buf)
+        expect_value(t, err, ReadError.None)
+        expect_value(t, b, false)
+        
+        b, err = read_proc(buf)
+        expect_value(t, err, ReadError.None)
+        expect_value(t, b, true)
+    
+        assert(read_proc != nil, "trap")
+        _, err = read_bool_exact(buf)
+        expect_value(t, err, ReadError.InvalidData)
+        // should not have advanced due to InvalidData
+        _, err = read_proc(buf)
+        expect_value(t, err, ReadError.InvalidData)
     }
 }
